@@ -116,10 +116,16 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	}
 
 	// Get Telegram file info (this works for files up to 2GB) - FAST, no download
+	// Note: GetFile works for ALL file sizes, even >50MB, because we're not downloading
 	file, err := b.api.GetFile(tgbotapi.FileConfig{FileID: telegramFileID})
 	if err != nil {
-		log.Printf("Error getting file info: %v", err)
-		b.sendError(msg.Chat.ID, "Failed to get file info from Telegram")
+		log.Printf("Error getting file info for %s (size: %d bytes): %v", fileName, fileSize, err)
+		// Check if error mentions file size - if so, it's likely a different issue
+		if strings.Contains(err.Error(), "too big") || strings.Contains(err.Error(), "too large") {
+			// This shouldn't happen for GetFile, but handle it gracefully
+			log.Printf("Unexpected size error from GetFile - file size: %d bytes", fileSize)
+		}
+		b.sendError(msg.Chat.ID, fmt.Sprintf("Failed to get file info: %v", err))
 		return
 	}
 
