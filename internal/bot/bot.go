@@ -43,12 +43,13 @@ func New(cfg *config.Config, db *database.DB, storage *storage.Storage, domain s
 			Timeout: 30 * time.Second,
 		}
 		
-		// Use NewBotAPIWithAPIEndpoint instead - it handles the /bot suffix correctly
+		// Use NewBotAPIWithAPIEndpoint - it handles the /bot suffix correctly
+		// The endpoint should be base URL like: https://example.com (no /bot)
 		api, err = tgbotapi.NewBotAPIWithAPIEndpoint(cfg.Telegram.BotToken, apiEndpoint)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create bot API with custom server %s: %w", apiEndpoint, err)
 		}
-		// Set custom client if needed
+		// Set custom HTTP client with timeout
 		api.Client = client
 	} else {
 		// Use default Telegram Bot API
