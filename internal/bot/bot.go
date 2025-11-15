@@ -134,11 +134,15 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		return
 	}
 
-	// For files > 50MB, we'll proxy Telegram's URL instead of downloading
-	const maxDownloadSize = 50 * 1024 * 1024 // 50MB
+	// Always proxy from Telegram (don't download to save storage/bandwidth)
+	// This works for all file sizes up to 2GB
 	var fileData []byte
 	var downloaded bool
 
+	// For now, we'll proxy everything to save storage
+	// If you want to download small files, uncomment the code below:
+	/*
+	const maxDownloadSize = 50 * 1024 * 1024 // 50MB
 	if fileSize <= maxDownloadSize {
 		// Download small files (<50MB) to our server for faster streaming
 		log.Printf("Downloading file %s (size: %d bytes) to server", fileName, fileSize)
@@ -150,6 +154,9 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 			downloaded = true
 		}
 	}
+	*/
+	
+	log.Printf("File %s (%d bytes) will be proxied from Telegram", fileName, fileSize)
 
 	// Ensure file type is set
 	if fileType == "" {

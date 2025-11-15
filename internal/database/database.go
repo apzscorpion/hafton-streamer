@@ -124,7 +124,7 @@ func (db *DB) GetFileByID(id string) (*FileRecord, error) {
 	row := db.conn.QueryRow(query, id)
 	record := &FileRecord{}
 
-	var uploadedAt, expiresAt string
+	var uploadedAt, expiresAt sql.NullString
 	var isProxiedInt int
 	err := row.Scan(
 		&record.ID,
@@ -144,8 +144,29 @@ func (db *DB) GetFileByID(id string) (*FileRecord, error) {
 		return nil, err
 	}
 
-	record.UploadedAt, _ = time.Parse("2006-01-02 15:04:05", uploadedAt)
-	record.ExpiresAt, _ = time.Parse("2006-01-02 15:04:05", expiresAt)
+	// Parse uploaded_at
+	if uploadedAt.Valid && uploadedAt.String != "" {
+		if t, err := time.Parse("2006-01-02 15:04:05", uploadedAt.String); err == nil {
+			record.UploadedAt = t
+		} else {
+			return nil, fmt.Errorf("invalid uploaded_at format: %v", err)
+		}
+	} else {
+		record.UploadedAt = time.Now()
+	}
+
+	// Parse expires_at
+	if expiresAt.Valid && expiresAt.String != "" {
+		if t, err := time.Parse("2006-01-02 15:04:05", expiresAt.String); err == nil {
+			record.ExpiresAt = t
+		} else {
+			return nil, fmt.Errorf("invalid expires_at format: %v", err)
+		}
+	} else {
+		// If expires_at is NULL, set it to 5 days from now
+		record.ExpiresAt = time.Now().AddDate(0, 0, 5)
+	}
+
 	record.IsProxied = isProxiedInt == 1
 
 	return record, nil
@@ -168,7 +189,7 @@ func (db *DB) GetExpiredFiles() ([]*FileRecord, error) {
 	var records []*FileRecord
 	for rows.Next() {
 		record := &FileRecord{}
-		var uploadedAt, expiresAt string
+		var uploadedAt, expiresAt sql.NullString
 		var isProxiedInt int
 
 		err := rows.Scan(
@@ -188,8 +209,20 @@ func (db *DB) GetExpiredFiles() ([]*FileRecord, error) {
 			continue
 		}
 
-		record.UploadedAt, _ = time.Parse("2006-01-02 15:04:05", uploadedAt)
-		record.ExpiresAt, _ = time.Parse("2006-01-02 15:04:05", expiresAt)
+		// Parse uploaded_at
+		if uploadedAt.Valid && uploadedAt.String != "" {
+			if t, err := time.Parse("2006-01-02 15:04:05", uploadedAt.String); err == nil {
+				record.UploadedAt = t
+			}
+		}
+
+		// Parse expires_at
+		if expiresAt.Valid && expiresAt.String != "" {
+			if t, err := time.Parse("2006-01-02 15:04:05", expiresAt.String); err == nil {
+				record.ExpiresAt = t
+			}
+		}
+
 		record.IsProxied = isProxiedInt == 1
 		records = append(records, record)
 	}
