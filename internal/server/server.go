@@ -200,6 +200,47 @@ func (s *Server) serveFileWithRange(w http.ResponseWriter, r *http.Request, reco
 	io.CopyN(w, file, end-start+1)
 }
 
+func (s *Server) proxyTelegramFile(w http.ResponseWriter, r *http.Request, record *database.FileRecord) {
+	// Create request to Telegram
+	req, err := http.NewRequest("GET", record.TelegramFileURL, nil)
+	if err != nil {
+		http.Error(w, "Failed to create request", http.StatusInternalServerError)
+		return
+	}
+
+	// Forward Range header if present (for byte-range support)
+	if rangeHeader := r.Header.Get("Range"); rangeHeader != "" {
+		req.Header.Set("Range", rangeHeader)
+	}
+
+	// Make request to Telegram
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "Failed to fetch file from Telegram", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Copy headers from Telegram response
+	for key, values := range resp.Header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+
+	// Set content type if not set
+	if resp.Header.Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", record.FileType)
+	}
+
+	// Copy status code
+	w.WriteHeader(resp.StatusCode)
+
+	// Stream response
+	io.Copy(w, resp.Body)
+}
+
 type byteRange struct {
 	start int64
 	end   int64
