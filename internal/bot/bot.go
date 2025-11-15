@@ -115,7 +115,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		return
 	}
 
-	// Get Telegram file info (this works for files up to 2GB)
+	// Get Telegram file info (this works for files up to 2GB) - FAST, no download
 	file, err := b.api.GetFile(tgbotapi.FileConfig{FileID: telegramFileID})
 	if err != nil {
 		log.Printf("Error getting file info: %v", err)
@@ -123,7 +123,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		return
 	}
 
-	// Get Telegram file URL (this works for all file sizes, up to 2GB)
+	// Get Telegram file URL immediately (no download, instant response)
 	telegramFileURL := file.Link(b.api.Token)
 	
 	// Check file size - Telegram allows up to 2GB
@@ -134,30 +134,6 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		return
 	}
 
-	// Always proxy from Telegram (don't download to save storage/bandwidth)
-	// This works for all file sizes up to 2GB
-	var fileData []byte
-	var downloaded bool
-
-	// For now, we'll proxy everything to save storage
-	// If you want to download small files, uncomment the code below:
-	/*
-	const maxDownloadSize = 50 * 1024 * 1024 // 50MB
-	if fileSize <= maxDownloadSize {
-		// Download small files (<50MB) to our server for faster streaming
-		log.Printf("Downloading file %s (size: %d bytes) to server", fileName, fileSize)
-		fileData, err = b.downloadFile(telegramFileID)
-		if err != nil {
-			log.Printf("Error downloading file: %v, will use Telegram proxy instead", err)
-			// Fall through to proxy mode
-		} else {
-			downloaded = true
-		}
-	}
-	*/
-	
-	log.Printf("File %s (%d bytes) will be proxied from Telegram", fileName, fileSize)
-
 	// Ensure file type is set
 	if fileType == "" {
 		ext := filepath.Ext(fileName)
@@ -167,52 +143,33 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		}
 	}
 
-	if downloaded {
-		// Save downloaded file to storage
-		if err := b.storage.SaveFile(fileID, fileName, fileData); err != nil {
-			log.Printf("Error saving file: %v", err)
-			b.sendError(msg.Chat.ID, "Failed to save file")
-			return
-		}
-	} else {
-		// For large files, we'll proxy Telegram's URL
-		// Create a marker file or store Telegram URL in database
-		log.Printf("File %s (%d bytes) will be proxied from Telegram", fileName, fileSize)
-		// Store Telegram URL - we'll use it for streaming
-		telegramFileURL = file.Link(b.api.Token)
-	}
-
 	// Calculate expiration
 	uploadedAt := time.Now()
 	expiresAt := uploadedAt.AddDate(0, 0, b.config.Retention.Days)
 
-	// Store in database
+	// Store in database (async - don't wait for this)
 	record := &database.FileRecord{
 		ID:              fileID,
 		TelegramFileID:  telegramFileID,
 		TelegramFileURL: telegramFileURL,
-		FilePath:        b.storage.GetFilePath(fileID, fileName),
+		FilePath:        "", // Not needed for proxied files
 		FileName:        fileName,
-		FileSize:        fileSize, // Use original file size, not downloaded size
+		FileSize:        fileSize,
 		FileType:        fileType,
 		UploadedAt:      uploadedAt,
 		ExpiresAt:       expiresAt,
 		TelegramUserID:  msg.From.ID,
-		IsProxied:       !downloaded, // True if proxied, false if downloaded
-	}
-	
-	// If downloaded, use actual downloaded size
-	if downloaded {
-		record.FileSize = int64(len(fileData))
+		IsProxied:       true, // Always proxy - instant response
 	}
 
-	if err := b.db.InsertFile(record); err != nil {
-		log.Printf("Error inserting file record: %v", err)
-		b.sendError(msg.Chat.ID, "Failed to save file metadata")
-		return
-	}
+	// Insert in background (don't block response)
+	go func() {
+		if err := b.db.InsertFile(record); err != nil {
+			log.Printf("Error inserting file record: %v", err)
+		}
+	}()
 
-	// Send reply with links
+	// Send reply IMMEDIATELY with links (don't wait for DB insert)
 	b.sendFileLinks(msg.Chat.ID, record)
 }
 
