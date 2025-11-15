@@ -40,7 +40,19 @@ func (s *Server) Start() error {
 	r.HandleFunc("/file/{id}", s.handleDownload).Methods("GET")
 	r.HandleFunc("/health", s.handleHealth).Methods("GET")
 
-	addr := fmt.Sprintf(":%d", s.config.Server.Port)
+	port := s.config.Server.Port
+	if port == 0 {
+		port = 8080
+	}
+	
+	// Railway provides PORT env variable
+	if portEnv := os.Getenv("PORT"); portEnv != "" {
+		if p, err := strconv.Atoi(portEnv); err == nil {
+			port = p
+		}
+	}
+
+	addr := fmt.Sprintf(":%d", port)
 	log.Printf("Starting HTTP server on %s", addr)
 	return http.ListenAndServe(addr, r)
 }

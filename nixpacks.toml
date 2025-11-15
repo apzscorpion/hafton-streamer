@@ -1,0 +1,12 @@
+[phases.setup]
+nixPkgs = ["go_1_21", "gcc", "sqlite"]
+
+[phases.build]
+cmds = [
+  "go mod download",
+  "CGO_ENABLED=1 go build -o bin/server ./cmd/server"
+]
+
+[start]
+cmd = "./bin/server"
+
