@@ -1,18 +1,10 @@
-# Don't ignore source files - they're needed for Docker build
-!go.mod
-!go.sum
-!cmd/
-!internal/
-!config/
-
-# Ignore these
+# Ignore these files/directories
 bin/
 *.exe
 *.db
 *.db-shm
 *.db-wal
 data/
-storage/
 .git/
 .gitignore
 .DS_Store
@@ -34,4 +26,14 @@ nginx/
 docker-compose.yml
 Procfile
 .railway/
+
+# IMPORTANT: Don't ignore source code directories
+# These are needed for the build:
+# - cmd/ (contains server code)
+# - internal/ (contains all packages including internal/storage/)
+# - config/ (contains config files)
+# - go.mod, go.sum (module files)
+
+# Only ignore the runtime storage directory at root level, not internal/storage/
+/storage/
 
