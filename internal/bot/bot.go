@@ -32,22 +32,31 @@ func New(cfg *config.Config, db *database.DB, storage *storage.Storage, domain s
 	
 	// Use custom Bot API server if configured (for large file support)
 	if cfg.Telegram.BotAPIURL != "" {
-		// Clean up URL - remove trailing slashes
+		// Clean up URL - remove trailing slashes and ensure proper format
 		apiEndpoint := strings.TrimSuffix(cfg.Telegram.BotAPIURL, "/")
-		// The endpoint should be the base URL, NOT include /bot
-		// The library will add /bot<token>/method automatically
+		// Ensure URL is valid
+		if !strings.HasPrefix(apiEndpoint, "http://") && !strings.HasPrefix(apiEndpoint, "https://") {
+			return nil, fmt.Errorf("Bot API URL must start with http:// or https://")
+		}
+		
 		log.Printf("Using custom Bot API server: %s", apiEndpoint)
 		
-		// Create HTTP client
+		// Create HTTP client with timeout
 		client := &http.Client{
 			Timeout: 30 * time.Second,
 		}
 		
-		// Use NewBotAPIWithAPIEndpoint - it handles the /bot suffix correctly
+		// Try NewBotAPIWithAPIEndpoint first
 		// The endpoint should be base URL like: https://example.com (no /bot)
 		api, err = tgbotapi.NewBotAPIWithAPIEndpoint(cfg.Telegram.BotToken, apiEndpoint)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create bot API with custom server %s: %w", apiEndpoint, err)
+			// If that fails, try with /bot suffix
+			log.Printf("NewBotAPIWithAPIEndpoint failed, trying with /bot suffix: %v", err)
+			apiEndpointWithBot := apiEndpoint + "/bot"
+			api, err = tgbotapi.NewBotAPIWithAPIEndpoint(cfg.Telegram.BotToken, apiEndpointWithBot)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create bot API with custom server %s: %w", apiEndpoint, err)
+			}
 		}
 		// Set custom HTTP client with timeout
 		api.Client = client
