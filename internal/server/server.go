@@ -109,10 +109,10 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If proxied, redirect to Telegram
+	// If proxied, proxy from Telegram
 	if record.IsProxied && record.TelegramFileURL != "" {
 		log.Printf("Proxying download from Telegram: %s", record.TelegramFileURL)
-		http.Redirect(w, r, record.TelegramFileURL, http.StatusFound)
+		s.proxyTelegramFile(w, r, record)
 		return
 	}
 
@@ -139,10 +139,10 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveFileWithRange(w http.ResponseWriter, r *http.Request, record *database.FileRecord) {
-	// If file is proxied from Telegram, redirect to Telegram's URL
+	// If file is proxied from Telegram, proxy the request to Telegram
 	if record.IsProxied && record.TelegramFileURL != "" {
 		log.Printf("Proxying file from Telegram: %s", record.TelegramFileURL)
-		http.Redirect(w, r, record.TelegramFileURL, http.StatusFound)
+		s.proxyTelegramFile(w, r, record)
 		return
 	}
 
