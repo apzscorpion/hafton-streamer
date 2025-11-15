@@ -1,0 +1,9 @@
+FROM aiogram/telegram-bot-api:latest
+
+# Your API credentials (from my.telegram.org)
+ENV TELEGRAM_API_ID=33608323
+ENV TELEGRAM_API_HASH=339982c3dc6fa78474ea07d77a9b0d7b
+
+# Run Bot API server in local mode (supports files up to 2GB)
+CMD ["--local", "--http-port=8081"]
+
