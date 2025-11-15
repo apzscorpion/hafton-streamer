@@ -27,9 +27,23 @@ type Bot struct {
 }
 
 func New(cfg *config.Config, db *database.DB, storage *storage.Storage, domain string) (*Bot, error) {
-	api, err := tgbotapi.NewBotAPI(cfg.Telegram.BotToken)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create bot API: %w", err)
+	var api *tgbotapi.BotAPI
+	var err error
+	
+	// Use custom Bot API server if configured (for large file support)
+	if cfg.Telegram.BotAPIURL != "" {
+		log.Printf("Using custom Bot API server: %s", cfg.Telegram.BotAPIURL)
+		client := &http.Client{}
+		api, err = tgbotapi.NewBotAPIWithClient(cfg.Telegram.BotToken, cfg.Telegram.BotAPIURL, client)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create bot API with custom server: %w", err)
+		}
+	} else {
+		// Use default Telegram Bot API
+		api, err = tgbotapi.NewBotAPI(cfg.Telegram.BotToken)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create bot API: %w", err)
+		}
 	}
 
 	bot := &Bot{

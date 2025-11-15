@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # Self-hosted Telegram Bot API Server (supports files up to 2GB)
+  telegram-bot-api:
+    image: aiogram/telegram-bot-api:latest
+    container_name: telegram-bot-api
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - TELEGRAM_API_ID=33608323
+      - TELEGRAM_API_HASH=339982c3dc6fa78474ea07d77a9b0d7b
+    volumes:
+      - bot-api-data:/var/lib/telegram-bot-api
+    command: --local --http-port=8081
+    networks:
+      - streaming-network
+
+  # Your bot and server (updated to use custom Bot API)
+  bot-server:
+    build: .
+    container_name: hafton-streamer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_BOT_API_URL=http://telegram-bot-api:8081
+      - DOMAIN=${DOMAIN:-localhost:8080}
+      - PORT=8080
+    volumes:
+      - ./data:/app/data
+      - ./storage:/app/storage
+    networks:
+      - streaming-network
+    depends_on:
+      - telegram-bot-api
+
+volumes:
+  bot-api-data:
+
+networks:
+  streaming-network:
+    driver: bridge
+

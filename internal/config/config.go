@@ -9,7 +9,10 @@ import (
 
 type Config struct {
 	Telegram struct {
-		BotToken string `yaml:"bot_token"`
+		BotToken    string `yaml:"bot_token"`
+		BotAPIURL   string `yaml:"bot_api_url"`   // Custom Bot API server URL (optional)
+		APIID       string `yaml:"api_id"`         // For self-hosted Bot API server
+		APIHash     string `yaml:"api_hash"`       // For self-hosted Bot API server
 	} `yaml:"telegram"`
 	Server struct {
 		Port        int    `yaml:"port"`

@@ -33,6 +33,9 @@ func main() {
 		if cfg.Telegram.BotToken == "" {
 			log.Fatalf("TELEGRAM_BOT_TOKEN environment variable is required")
 		}
+		cfg.Telegram.BotAPIURL = os.Getenv("TELEGRAM_BOT_API_URL") // Optional: custom Bot API server
+		cfg.Telegram.APIID = os.Getenv("TELEGRAM_API_ID")           // For self-hosted Bot API
+		cfg.Telegram.APIHash = os.Getenv("TELEGRAM_API_HASH")       // For self-hosted Bot API
 		// Default to 8080, but Render/Railway provides PORT env var
 		portEnv := os.Getenv("PORT")
 		if portEnv == "" {
