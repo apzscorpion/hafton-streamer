@@ -23,8 +23,8 @@ COPY . .
 ENV GO111MODULE=on
 ENV CGO_ENABLED=1
 
-# Build server
-RUN go build -o bin/server ./cmd/server
+# Build server with SQLite build tags for Linux
+RUN go build -tags "sqlite_omit_load_extension" -o bin/server ./cmd/server
 
 # Final stage
 FROM debian:bullseye-slim
