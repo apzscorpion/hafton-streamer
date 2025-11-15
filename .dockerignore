@@ -1,6 +1,9 @@
-# Don't ignore go.mod and go.sum - they're needed for Docker build
+# Don't ignore source files - they're needed for Docker build
 !go.mod
 !go.sum
+!cmd/
+!internal/
+!config/
 
 # Ignore these
 bin/
@@ -22,4 +25,13 @@ storage/
 *.swo
 *~
 Thumbs.db
+*.md
+deploy.sh
+setup-local.sh
+scripts/
+systemd/
+nginx/
+docker-compose.yml
+Procfile
+.railway/
 
