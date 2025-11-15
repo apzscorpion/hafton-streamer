@@ -11,13 +11,15 @@ COPY go.mod go.sum ./
 # Verify module and download dependencies
 RUN go mod verify && go mod download
 
-# Copy all source code (ensure module structure is preserved)
-COPY cmd/ ./cmd/
-COPY internal/ ./internal/
-COPY config/ ./config/
+# Copy all source code (copy everything except what's in .dockerignore)
+COPY . .
 
-# Verify files are copied correctly
-RUN ls -la && ls -la cmd/ && ls -la internal/
+# Verify files are copied correctly and module is recognized
+RUN ls -la && \
+    ls -la cmd/ && \
+    ls -la internal/ && \
+    cat go.mod && \
+    go list -m
 
 # Build server only
 RUN CGO_ENABLED=1 go build -v -o bin/server ./cmd/server
