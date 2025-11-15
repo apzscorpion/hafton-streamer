@@ -231,9 +231,30 @@ func (s *Server) proxyTelegramFile(w http.ResponseWriter, r *http.Request, recor
 	defer resp.Body.Close()
 
 	// Copy headers from Telegram response
+	// Use Set() for single-valued headers to avoid duplicates
+	singleValuedHeaders := map[string]bool{
+		"Content-Type":        true,
+		"Content-Length":      true,
+		"Content-Range":       true,
+		"Content-Disposition": true,
+		"Accept-Ranges":       true,
+		"Cache-Control":       true,
+		"ETag":                true,
+		"Last-Modified":       true,
+	}
+
 	for key, values := range resp.Header {
-		for _, value := range values {
-			w.Header().Add(key, value)
+		keyLower := strings.ToLower(key)
+		if singleValuedHeaders[keyLower] {
+			// Single-valued header - use Set() to ensure only one value
+			if len(values) > 0 {
+				w.Header().Set(key, values[0])
+			}
+		} else {
+			// Multi-valued header - use Add() for each value
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
 		}
 	}
 
