@@ -147,7 +147,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	uploadedAt := time.Now()
 	expiresAt := uploadedAt.AddDate(0, 0, b.config.Retention.Days)
 
-	// Store in database (async - don't wait for this)
+	// Store in database (must complete before sending links to avoid race condition)
 	record := &database.FileRecord{
 		ID:              fileID,
 		TelegramFileID:  telegramFileID,
@@ -162,14 +162,16 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		IsProxied:       true, // Always proxy - instant response
 	}
 
-	// Insert in background (don't block response)
-	go func() {
-		if err := b.db.InsertFile(record); err != nil {
-			log.Printf("Error inserting file record: %v", err)
-		}
-	}()
+	// Insert BEFORE sending links (must be in DB when user clicks link)
+	if err := b.db.InsertFile(record); err != nil {
+		log.Printf("Error inserting file record: %v", err)
+		b.sendError(msg.Chat.ID, "Failed to save file metadata")
+		return
+	}
 
-	// Send reply IMMEDIATELY with links (don't wait for DB insert)
+	log.Printf("File %s (%d bytes) ready, ID: %s, expires: %v", fileName, fileSize, fileID, expiresAt)
+
+	// Send reply with links
 	b.sendFileLinks(msg.Chat.ID, record)
 }
 

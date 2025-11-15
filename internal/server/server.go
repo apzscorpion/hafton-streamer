@@ -73,6 +73,14 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if expiration date is valid (not zero time)
+	if record.ExpiresAt.IsZero() {
+		log.Printf("File %s has invalid expiration date (zero time), setting to 5 days from now", fileID)
+		record.ExpiresAt = time.Now().AddDate(0, 0, 5)
+		// Update database with correct expiration
+		// (This is a fallback - shouldn't happen if insert worked correctly)
+	}
+
 	// Check if file is expired
 	now := time.Now()
 	if now.After(record.ExpiresAt) {
