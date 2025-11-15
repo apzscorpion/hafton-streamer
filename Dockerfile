@@ -5,13 +5,14 @@ WORKDIR /app
 # Install build dependencies for CGO
 RUN apk add --no-cache gcc musl-dev sqlite-dev
 
-# Copy go mod files (go.sum might not exist, so copy separately)
-COPY go.mod ./
-COPY go.sum* ./
+# Copy go mod files first
+COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source code
-COPY . .
+# Copy all source code (ensure module structure is preserved)
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
+COPY config/ ./config/
 
 # Build server only
 RUN CGO_ENABLED=1 go build -o bin/server ./cmd/server
