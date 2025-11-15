@@ -1,3 +1,25 @@
-# Ignore everything - we're using nixpacks, not Docker
-*
+# Don't ignore go.mod and go.sum - they're needed for Docker build
+!go.mod
+!go.sum
+
+# Ignore these
+bin/
+*.exe
+*.db
+*.db-shm
+*.db-wal
+data/
+storage/
+.git/
+.gitignore
+.DS_Store
+*.log
+.env
+.env.local
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+Thumbs.db
 
