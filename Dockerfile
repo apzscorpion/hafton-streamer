@@ -21,8 +21,13 @@ RUN ls -la && \
     cat go.mod && \
     go list -m
 
-# Build server only
-RUN CGO_ENABLED=1 go build -v -o bin/server ./cmd/server
+# Ensure we're in module mode and build from module root
+ENV GO111MODULE=on
+ENV CGO_ENABLED=1
+
+# Build server only (ensure we're building from the module root)
+WORKDIR /app
+RUN go build -v -o bin/server ./cmd/server
 
 # Final stage
 FROM alpine:latest
