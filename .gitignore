@@ -20,7 +20,7 @@ go.work
 
 # Application data
 data/
-storage/
+/storage/  # Only ignore root-level storage directory, not internal/storage/
 *.db
 *.db-shm
 *.db-wal
