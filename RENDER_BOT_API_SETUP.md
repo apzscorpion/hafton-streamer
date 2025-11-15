@@ -20,7 +20,7 @@ Add a **SECOND service** on Render:
 
 1. Go to Render dashboard: https://dashboard.render.com
 2. Click **"New +"** → **"Web Service"**
-3. Connect your GitHub repo: `apzscorpion/hafton-streamer`
+3. **Connect your GitHub repo:** `apzscorpion/hafton-streamer` ✅ **SAME REPO!**
 4. Configure the NEW service:
 
    **Basic Settings:**
@@ -31,8 +31,12 @@ Add a **SECOND service** on Render:
    - **Runtime:** `Docker`
 
    **Build & Deploy:**
-   - **Dockerfile Path:** `Dockerfile.bot-api` (we'll create this)
+   - **Dockerfile Path:** `Dockerfile.bot-api` ✅ **Different Dockerfile!**
    - **Docker Context:** Leave empty
+   
+   **Important:** Same repo, but different Dockerfile!
+   - Your bot service uses: `Dockerfile` (builds your Go bot)
+   - Bot API service uses: `Dockerfile.bot-api` (runs Telegram's Bot API server)
 
    **Environment Variables:**
    - `TELEGRAM_API_ID` = `33608323`
