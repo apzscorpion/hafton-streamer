@@ -7,15 +7,20 @@ RUN apk add --no-cache gcc musl-dev sqlite-dev
 
 # Copy go mod files first
 COPY go.mod go.sum ./
-RUN go mod download
+
+# Verify module and download dependencies
+RUN go mod verify && go mod download
 
 # Copy all source code (ensure module structure is preserved)
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 COPY config/ ./config/
 
+# Verify files are copied correctly
+RUN ls -la && ls -la cmd/ && ls -la internal/
+
 # Build server only
-RUN CGO_ENABLED=1 go build -o bin/server ./cmd/server
+RUN CGO_ENABLED=1 go build -v -o bin/server ./cmd/server
 
 # Final stage
 FROM alpine:latest
