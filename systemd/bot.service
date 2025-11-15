@@ -1,0 +1,16 @@
+[Unit]
+Description=Hafton Movie Bot - Telegram Bot Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/hafton-movie-bot
+ExecStart=/opt/hafton-movie-bot/bin/bot
+Restart=always
+RestartSec=10
+Environment="DOMAIN=yourdomain.com"
+
+[Install]
+WantedBy=multi-user.target
+

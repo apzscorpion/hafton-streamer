@@ -1,0 +1,14 @@
+telegram:
+  bot_token: "7529698346:AAGwnFvdpVVlmEBSCgIu61OrXnaOBWhfTVY"
+
+server:
+  port: 8080
+  domain: ""  # Set after domain setup
+  storage_path: "./storage"
+
+database:
+  path: "./data/bot.db"
+
+retention:
+  days: 5
+

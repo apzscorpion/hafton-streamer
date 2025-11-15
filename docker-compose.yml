@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: hafton-movie-bot
+    restart: unless-stopped
+    command: /app/bin/bot
+    environment:
+      - DOMAIN=${DOMAIN:-localhost:8080}
+    volumes:
+      - ./data:/app/data
+      - ./storage:/app/storage
+      - ./config:/app/config
+    networks:
+      - streaming-network
+
+  server:
+    build: .
+    container_name: hafton-movie-server
+    restart: unless-stopped
+    command: /app/bin/server
+    ports:
+      - "8080:8080"
+    environment:
+      - DOMAIN=${DOMAIN:-localhost:8080}
+    volumes:
+      - ./data:/app/data
+      - ./storage:/app/storage
+      - ./config:/app/config
+    networks:
+      - streaming-network
+    depends_on:
+      - bot
+
+networks:
+  streaming-network:
+    driver: bridge
+
