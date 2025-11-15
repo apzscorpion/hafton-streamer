@@ -26,8 +26,8 @@ ENV CGO_ENABLED=1
 # Set CFLAGS for SQLite compilation (fix pread64/pwrite64 issues)
 ENV CGO_CFLAGS="-D_LARGEFILE64_SOURCE"
 
-# Build server
-RUN go build -o bin/server ./cmd/server
+# Build combined bot+server
+RUN go build -o bin/combined ./cmd/combined
 
 # Final stage
 FROM debian:bullseye-slim
@@ -41,14 +41,14 @@ RUN apt-get update && \
 WORKDIR /app
 
 # Copy binary
-COPY --from=builder /app/bin/server /app/bin/server
+COPY --from=builder /app/bin/combined /app/bin/combined
 
 # Create directories
 RUN mkdir -p /app/data /app/storage
 
 EXPOSE 8080
 
-# Use PORT environment variable (Railway provides this)
+# Use PORT environment variable (Render/Railway provides this)
 ENV PORT=8080
-CMD ["./bin/server"]
+CMD ["./bin/combined"]
 
