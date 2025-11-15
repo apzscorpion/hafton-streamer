@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -85,10 +86,19 @@ func main() {
 	if domain == "" {
 		domain = os.Getenv("DOMAIN")
 		if domain == "" {
+			domain = os.Getenv("RENDER_EXTERNAL_URL")
+			if domain != "" {
+				// Remove https:// prefix if present
+				domain = strings.TrimPrefix(domain, "https://")
+				domain = strings.TrimPrefix(domain, "http://")
+			}
+		}
+		if domain == "" {
 			log.Println("Warning: Domain not set. Using localhost:8080")
 			domain = "localhost:8080"
 		}
 	}
+	log.Printf("Using domain: %s", domain)
 
 	// Create and start Telegram bot
 	telegramBot, err := bot.New(cfg, db, storage, domain)

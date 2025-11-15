@@ -73,9 +73,9 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if file is expired (with 1 minute buffer to avoid timezone issues)
+	// Check if file is expired
 	now := time.Now()
-	if now.After(record.ExpiresAt.Add(-time.Minute)) {
+	if now.After(record.ExpiresAt) {
 		log.Printf("File expired: %s, expires at: %v, now: %v", fileID, record.ExpiresAt, now)
 		s.serveExpiredPage(w, r)
 		return
