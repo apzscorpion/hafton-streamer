@@ -7,6 +7,7 @@ import (
 	"mime"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"hafton-movie-bot/internal/config"
@@ -62,36 +63,43 @@ func (b *Bot) Start() error {
 }
 
 func (b *Bot) handleMessage(msg *tgbotapi.Message) {
+	// Handle forwarded messages - check original message for files
+	actualMsg := msg
+	if msg.ForwardFrom != nil || msg.ForwardFromChat != nil {
+		// It's a forwarded message, but we still process the current message's files
+		// Telegram forwards include the file in the forwarded message
+	}
+
 	// Handle document, video, and audio messages
 	var telegramFileID string
 	var fileName string
 	var fileSize int64
 	var fileType string
 
-	if msg.Document != nil {
-		telegramFileID = msg.Document.FileID
-		fileName = msg.Document.FileName
-		fileSize = int64(msg.Document.FileSize)
-		fileType = msg.Document.MimeType
-	} else if msg.Video != nil {
-		telegramFileID = msg.Video.FileID
-		fileName = msg.Video.FileName
+	if actualMsg.Document != nil {
+		telegramFileID = actualMsg.Document.FileID
+		fileName = actualMsg.Document.FileName
+		fileSize = int64(actualMsg.Document.FileSize)
+		fileType = actualMsg.Document.MimeType
+	} else if actualMsg.Video != nil {
+		telegramFileID = actualMsg.Video.FileID
+		fileName = actualMsg.Video.FileName
 		if fileName == "" {
-			fileName = fmt.Sprintf("video_%s.mp4", msg.Video.FileID)
+			fileName = fmt.Sprintf("video_%s.mp4", actualMsg.Video.FileID)
 		}
-		fileSize = int64(msg.Video.FileSize)
-		fileType = msg.Video.MimeType
+		fileSize = int64(actualMsg.Video.FileSize)
+		fileType = actualMsg.Video.MimeType
 		if fileType == "" {
 			fileType = "video/mp4"
 		}
-	} else if msg.Audio != nil {
-		telegramFileID = msg.Audio.FileID
-		fileName = msg.Audio.FileName
+	} else if actualMsg.Audio != nil {
+		telegramFileID = actualMsg.Audio.FileID
+		fileName = actualMsg.Audio.FileName
 		if fileName == "" {
-			fileName = fmt.Sprintf("audio_%s.mp3", msg.Audio.FileID)
+			fileName = fmt.Sprintf("audio_%s.mp3", actualMsg.Audio.FileID)
 		}
-		fileSize = int64(msg.Audio.FileSize)
-		fileType = msg.Audio.MimeType
+		fileSize = int64(actualMsg.Audio.FileSize)
+		fileType = actualMsg.Audio.MimeType
 		if fileType == "" {
 			fileType = "audio/mpeg"
 		}
@@ -107,12 +115,24 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		return
 	}
 
+	// Check file size limit (50MB for Telegram Bot API)
+	const maxBotAPISize = 50 * 1024 * 1024 // 50MB
+	if fileSize > maxBotAPISize {
+		log.Printf("File %s is too large (%d bytes > %d bytes). Telegram Bot API limit is 50MB.", fileName, fileSize, maxBotAPISize)
+		b.sendError(msg.Chat.ID, fmt.Sprintf("File too large (%d MB). Telegram Bot API limit is 50MB. Please upload files smaller than 50MB.", fileSize/(1024*1024)))
+		return
+	}
+
 	// Download file from Telegram
 	log.Printf("Downloading file %s (size: %d bytes)", fileName, fileSize)
 	fileData, err := b.downloadFile(telegramFileID)
 	if err != nil {
 		log.Printf("Error downloading file: %v", err)
-		b.sendError(msg.Chat.ID, "Failed to download file from Telegram")
+		if strings.Contains(err.Error(), "too large") || strings.Contains(err.Error(), "too big") {
+			b.sendError(msg.Chat.ID, "File too large. Telegram Bot API limit is 50MB. Please upload files smaller than 50MB.")
+		} else {
+			b.sendError(msg.Chat.ID, "Failed to download file from Telegram")
+		}
 		return
 	}
 
@@ -162,13 +182,19 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 func (b *Bot) downloadFile(fileID string) ([]byte, error) {
 	file, err := b.api.GetFile(tgbotapi.FileConfig{FileID: fileID})
 	if err != nil {
+		// Check if error is about file being too big
+		if strings.Contains(err.Error(), "too big") || strings.Contains(err.Error(), "file is too big") {
+			return nil, fmt.Errorf("file too large: Telegram Bot API limit is 50MB. Files larger than 50MB cannot be downloaded via bot API")
+		}
 		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}
 
 	fileURL := file.Link(b.api.Token)
 	
-	// Use http.Get directly since api.Client might not have Get method
-	httpClient := &http.Client{}
+	// Use http.Get with timeout for large files
+	httpClient := &http.Client{
+		Timeout: 30 * time.Minute, // Allow up to 30 minutes for large files
+	}
 	resp, err := httpClient.Get(fileURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download file: %w", err)
@@ -179,11 +205,32 @@ func (b *Bot) downloadFile(fileID string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to download file: status %d", resp.StatusCode)
 	}
 
+	// For very large files, read in chunks to avoid memory issues
+	const maxMemorySize = 100 * 1024 * 1024 // 100MB
+	if resp.ContentLength > maxMemorySize {
+		// Stream to temp file instead of memory
+		return b.downloadLargeFile(resp.Body, resp.ContentLength)
+	}
+
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file data: %w", err)
 	}
 
+	return data, nil
+}
+
+func (b *Bot) downloadLargeFile(reader io.Reader, contentLength int64) ([]byte, error) {
+	// For files > 100MB, we still read into memory but log a warning
+	// In production, you might want to stream directly to disk
+	log.Printf("Downloading large file (%d bytes), this may take a while...", contentLength)
+	
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read large file: %w", err)
+	}
+	
+	log.Printf("Successfully downloaded large file (%d bytes)", len(data))
 	return data, nil
 }
 

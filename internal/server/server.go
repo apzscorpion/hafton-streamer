@@ -68,22 +68,27 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	record, err := s.db.GetFileByID(fileID)
 	if err != nil {
+		log.Printf("File not found in database: %s, error: %v", fileID, err)
 		s.serveExpiredPage(w, r)
 		return
 	}
 
-	// Check if file is expired
-	if time.Now().After(record.ExpiresAt) {
+	// Check if file is expired (with 1 minute buffer to avoid timezone issues)
+	now := time.Now()
+	if now.After(record.ExpiresAt.Add(-time.Minute)) {
+		log.Printf("File expired: %s, expires at: %v, now: %v", fileID, record.ExpiresAt, now)
 		s.serveExpiredPage(w, r)
 		return
 	}
 
 	// Check if file exists
 	if !s.storage.FileExists(fileID, record.FileName) {
+		log.Printf("File not found on disk: %s/%s", fileID, record.FileName)
 		s.serveExpiredPage(w, r)
 		return
 	}
 
+	log.Printf("Serving file: %s/%s", fileID, record.FileName)
 	// Serve file with byte-range support
 	s.serveFileWithRange(w, r, record)
 }
