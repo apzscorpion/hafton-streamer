@@ -115,25 +115,40 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		return
 	}
 
-	// Check file size limit (50MB for Telegram Bot API)
-	const maxBotAPISize = 50 * 1024 * 1024 // 50MB
-	if fileSize > maxBotAPISize {
-		log.Printf("File %s is too large (%d bytes > %d bytes). Telegram Bot API limit is 50MB.", fileName, fileSize, maxBotAPISize)
-		b.sendError(msg.Chat.ID, fmt.Sprintf("File too large (%d MB). Telegram Bot API limit is 50MB. Please upload files smaller than 50MB.", fileSize/(1024*1024)))
+	// Get Telegram file info (this works for files up to 2GB)
+	file, err := b.api.GetFile(tgbotapi.FileConfig{FileID: telegramFileID})
+	if err != nil {
+		log.Printf("Error getting file info: %v", err)
+		b.sendError(msg.Chat.ID, "Failed to get file info from Telegram")
 		return
 	}
 
-	// Download file from Telegram
-	log.Printf("Downloading file %s (size: %d bytes)", fileName, fileSize)
-	fileData, err := b.downloadFile(telegramFileID)
-	if err != nil {
-		log.Printf("Error downloading file: %v", err)
-		if strings.Contains(err.Error(), "too large") || strings.Contains(err.Error(), "too big") {
-			b.sendError(msg.Chat.ID, "File too large. Telegram Bot API limit is 50MB. Please upload files smaller than 50MB.")
-		} else {
-			b.sendError(msg.Chat.ID, "Failed to download file from Telegram")
-		}
+	// Get Telegram file URL (this works for all file sizes, up to 2GB)
+	telegramFileURL := file.Link(b.api.Token)
+	
+	// Check file size - Telegram allows up to 2GB
+	const maxTelegramSize = 2 * 1024 * 1024 * 1024 // 2GB
+	if fileSize > maxTelegramSize {
+		log.Printf("File %s is too large (%d bytes > %d bytes). Telegram limit is 2GB.", fileName, fileSize, maxTelegramSize)
+		b.sendError(msg.Chat.ID, fmt.Sprintf("File too large (%d GB). Telegram limit is 2GB.", fileSize/(1024*1024*1024)))
 		return
+	}
+
+	// For files > 50MB, we'll proxy Telegram's URL instead of downloading
+	const maxDownloadSize = 50 * 1024 * 1024 // 50MB
+	var fileData []byte
+	var downloaded bool
+
+	if fileSize <= maxDownloadSize {
+		// Download small files (<50MB) to our server for faster streaming
+		log.Printf("Downloading file %s (size: %d bytes) to server", fileName, fileSize)
+		fileData, err = b.downloadFile(telegramFileID)
+		if err != nil {
+			log.Printf("Error downloading file: %v, will use Telegram proxy instead", err)
+			// Fall through to proxy mode
+		} else {
+			downloaded = true
+		}
 	}
 
 	// Ensure file type is set
@@ -145,11 +160,19 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		}
 	}
 
-	// Save file to storage
-	if err := b.storage.SaveFile(fileID, fileName, fileData); err != nil {
-		log.Printf("Error saving file: %v", err)
-		b.sendError(msg.Chat.ID, "Failed to save file")
-		return
+	if downloaded {
+		// Save downloaded file to storage
+		if err := b.storage.SaveFile(fileID, fileName, fileData); err != nil {
+			log.Printf("Error saving file: %v", err)
+			b.sendError(msg.Chat.ID, "Failed to save file")
+			return
+		}
+	} else {
+		// For large files, we'll proxy Telegram's URL
+		// Create a marker file or store Telegram URL in database
+		log.Printf("File %s (%d bytes) will be proxied from Telegram", fileName, fileSize)
+		// Store Telegram URL - we'll use it for streaming
+		telegramFileURL = file.Link(b.api.Token)
 	}
 
 	// Calculate expiration
@@ -158,15 +181,22 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 
 	// Store in database
 	record := &database.FileRecord{
-		ID:             fileID,
-		TelegramFileID: telegramFileID,
-		FilePath:       b.storage.GetFilePath(fileID, fileName),
-		FileName:       fileName,
-		FileSize:       int64(len(fileData)),
-		FileType:       fileType,
-		UploadedAt:     uploadedAt,
-		ExpiresAt:      expiresAt,
-		TelegramUserID: msg.From.ID,
+		ID:              fileID,
+		TelegramFileID:  telegramFileID,
+		TelegramFileURL: telegramFileURL,
+		FilePath:        b.storage.GetFilePath(fileID, fileName),
+		FileName:        fileName,
+		FileSize:        fileSize, // Use original file size, not downloaded size
+		FileType:        fileType,
+		UploadedAt:      uploadedAt,
+		ExpiresAt:       expiresAt,
+		TelegramUserID:  msg.From.ID,
+		IsProxied:       !downloaded, // True if proxied, false if downloaded
+	}
+	
+	// If downloaded, use actual downloaded size
+	if downloaded {
+		record.FileSize = int64(len(fileData))
 	}
 
 	if err := b.db.InsertFile(record); err != nil {

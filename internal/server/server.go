@@ -81,8 +81,8 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if file exists
-	if !s.storage.FileExists(fileID, record.FileName) {
+	// Check if file exists (only for downloaded files, proxied files don't need this check)
+	if !record.IsProxied && !s.storage.FileExists(fileID, record.FileName) {
 		log.Printf("File not found on disk: %s/%s", fileID, record.FileName)
 		s.serveExpiredPage(w, r)
 		return
@@ -109,8 +109,15 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if file exists
-	if !s.storage.FileExists(fileID, record.FileName) {
+	// If proxied, redirect to Telegram
+	if record.IsProxied && record.TelegramFileURL != "" {
+		log.Printf("Proxying download from Telegram: %s", record.TelegramFileURL)
+		http.Redirect(w, r, record.TelegramFileURL, http.StatusFound)
+		return
+	}
+
+	// Check if file exists (only for downloaded files)
+	if !record.IsProxied && !s.storage.FileExists(fileID, record.FileName) {
 		s.serveExpiredPage(w, r)
 		return
 	}
@@ -132,6 +139,14 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveFileWithRange(w http.ResponseWriter, r *http.Request, record *database.FileRecord) {
+	// If file is proxied from Telegram, redirect to Telegram's URL
+	if record.IsProxied && record.TelegramFileURL != "" {
+		log.Printf("Proxying file from Telegram: %s", record.TelegramFileURL)
+		http.Redirect(w, r, record.TelegramFileURL, http.StatusFound)
+		return
+	}
+
+	// Otherwise, serve from local storage
 	filePath := s.storage.GetFilePath(record.ID, record.FileName)
 	file, err := os.Open(filePath)
 	if err != nil {

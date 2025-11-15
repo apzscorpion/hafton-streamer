@@ -15,6 +15,7 @@ type DB struct {
 type FileRecord struct {
 	ID             string
 	TelegramFileID string
+	TelegramFileURL string // For large files, we store Telegram's direct URL
 	FilePath       string
 	FileName       string
 	FileSize       int64
@@ -22,6 +23,7 @@ type FileRecord struct {
 	UploadedAt     time.Time
 	ExpiresAt      time.Time
 	TelegramUserID int64
+	IsProxied      bool // True if file is proxied from Telegram, false if downloaded
 }
 
 func New(dbPath string) (*DB, error) {
@@ -43,13 +45,15 @@ func (db *DB) initSchema() error {
 	CREATE TABLE IF NOT EXISTS files (
 		id TEXT PRIMARY KEY,
 		telegram_file_id TEXT NOT NULL,
-		file_path TEXT NOT NULL,
+		telegram_file_url TEXT,
+		file_path TEXT,
 		file_name TEXT NOT NULL,
 		file_size INTEGER NOT NULL,
 		file_type TEXT NOT NULL,
 		uploaded_at DATETIME NOT NULL,
 		expires_at DATETIME NOT NULL,
-		telegram_user_id INTEGER NOT NULL
+		telegram_user_id INTEGER NOT NULL,
+		is_proxied INTEGER DEFAULT 0
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_expires_at ON files(expires_at);
@@ -57,7 +61,21 @@ func (db *DB) initSchema() error {
 	`
 
 	_, err := db.conn.Exec(query)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Migrate existing tables - add new columns if they don't exist
+	migrationQueries := []string{
+		"ALTER TABLE files ADD COLUMN telegram_file_url TEXT",
+		"ALTER TABLE files ADD COLUMN is_proxied INTEGER DEFAULT 0",
+	}
+	
+	for _, migrationQuery := range migrationQueries {
+		db.conn.Exec(migrationQuery) // Ignore errors if column already exists
+	}
+	
+	return nil
 }
 
 func (db *DB) Close() error {
@@ -67,15 +85,21 @@ func (db *DB) Close() error {
 func (db *DB) InsertFile(record *FileRecord) error {
 	query := `
 	INSERT INTO files (
-		id, telegram_file_id, file_path, file_name, file_size, 
-		file_type, uploaded_at, expires_at, telegram_user_id
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		id, telegram_file_id, telegram_file_url, file_path, file_name, file_size, 
+		file_type, uploaded_at, expires_at, telegram_user_id, is_proxied
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
+
+	isProxied := 0
+	if record.IsProxied {
+		isProxied = 1
+	}
 
 	_, err := db.conn.Exec(
 		query,
 		record.ID,
 		record.TelegramFileID,
+		record.TelegramFileURL,
 		record.FilePath,
 		record.FileName,
 		record.FileSize,
@@ -83,6 +107,7 @@ func (db *DB) InsertFile(record *FileRecord) error {
 		record.UploadedAt.Format("2006-01-02 15:04:05"),
 		record.ExpiresAt.Format("2006-01-02 15:04:05"),
 		record.TelegramUserID,
+		isProxied,
 	)
 
 	return err
@@ -90,8 +115,8 @@ func (db *DB) InsertFile(record *FileRecord) error {
 
 func (db *DB) GetFileByID(id string) (*FileRecord, error) {
 	query := `
-	SELECT id, telegram_file_id, file_path, file_name, file_size, 
-	       file_type, uploaded_at, expires_at, telegram_user_id
+	SELECT id, telegram_file_id, telegram_file_url, file_path, file_name, file_size, 
+	       file_type, uploaded_at, expires_at, telegram_user_id, is_proxied
 	FROM files
 	WHERE id = ?
 	`
@@ -100,9 +125,11 @@ func (db *DB) GetFileByID(id string) (*FileRecord, error) {
 	record := &FileRecord{}
 
 	var uploadedAt, expiresAt string
+	var isProxiedInt int
 	err := row.Scan(
 		&record.ID,
 		&record.TelegramFileID,
+		&record.TelegramFileURL,
 		&record.FilePath,
 		&record.FileName,
 		&record.FileSize,
@@ -110,6 +137,7 @@ func (db *DB) GetFileByID(id string) (*FileRecord, error) {
 		&uploadedAt,
 		&expiresAt,
 		&record.TelegramUserID,
+		&isProxiedInt,
 	)
 
 	if err != nil {
@@ -118,14 +146,15 @@ func (db *DB) GetFileByID(id string) (*FileRecord, error) {
 
 	record.UploadedAt, _ = time.Parse("2006-01-02 15:04:05", uploadedAt)
 	record.ExpiresAt, _ = time.Parse("2006-01-02 15:04:05", expiresAt)
+	record.IsProxied = isProxiedInt == 1
 
 	return record, nil
 }
 
 func (db *DB) GetExpiredFiles() ([]*FileRecord, error) {
 	query := `
-	SELECT id, telegram_file_id, file_path, file_name, file_size, 
-	       file_type, uploaded_at, expires_at, telegram_user_id
+	SELECT id, telegram_file_id, telegram_file_url, file_path, file_name, file_size, 
+	       file_type, uploaded_at, expires_at, telegram_user_id, is_proxied
 	FROM files
 	WHERE expires_at < datetime('now')
 	`
@@ -140,10 +169,12 @@ func (db *DB) GetExpiredFiles() ([]*FileRecord, error) {
 	for rows.Next() {
 		record := &FileRecord{}
 		var uploadedAt, expiresAt string
+		var isProxiedInt int
 
 		err := rows.Scan(
 			&record.ID,
 			&record.TelegramFileID,
+			&record.TelegramFileURL,
 			&record.FilePath,
 			&record.FileName,
 			&record.FileSize,
@@ -151,6 +182,7 @@ func (db *DB) GetExpiredFiles() ([]*FileRecord, error) {
 			&uploadedAt,
 			&expiresAt,
 			&record.TelegramUserID,
+			&isProxiedInt,
 		)
 		if err != nil {
 			continue
@@ -158,6 +190,7 @@ func (db *DB) GetExpiredFiles() ([]*FileRecord, error) {
 
 		record.UploadedAt, _ = time.Parse("2006-01-02 15:04:05", uploadedAt)
 		record.ExpiresAt, _ = time.Parse("2006-01-02 15:04:05", expiresAt)
+		record.IsProxied = isProxiedInt == 1
 		records = append(records, record)
 	}
 
