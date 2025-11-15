@@ -31,11 +31,15 @@ func main() {
 		if cfg.Telegram.BotToken == "" {
 			log.Fatalf("TELEGRAM_BOT_TOKEN environment variable is required")
 		}
-		cfg.Server.Port = 8080
-		if port := os.Getenv("PORT"); port != "" {
-			if p, err := strconv.Atoi(port); err == nil {
-				cfg.Server.Port = p
-			}
+		// Default to 8080, but Railway provides PORT env var
+		portEnv := os.Getenv("PORT")
+		if portEnv == "" {
+			portEnv = "8080"
+		}
+		if p, err := strconv.Atoi(portEnv); err == nil {
+			cfg.Server.Port = p
+		} else {
+			cfg.Server.Port = 8080
 		}
 		cfg.Server.Domain = os.Getenv("DOMAIN")
 		if cfg.Server.Domain == "" {
