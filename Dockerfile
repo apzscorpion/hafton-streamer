@@ -1,9 +1,14 @@
-FROM golang:1.21-alpine AS builder
+FROM golang:1.21-bullseye AS builder
 
 WORKDIR /app
 
-# Install build dependencies for CGO
-RUN apk add --no-cache gcc musl-dev sqlite-dev
+# Install build dependencies for CGO (Debian has better SQLite support)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    gcc \
+    libc6-dev \
+    libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy go mod files first
 COPY go.mod go.sum ./
@@ -39,9 +44,13 @@ WORKDIR /app
 RUN go build -v -o bin/server ./cmd/server
 
 # Final stage
-FROM alpine:latest
+FROM debian:bullseye-slim
 
-RUN apk --no-cache add ca-certificates sqlite
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    ca-certificates \
+    sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
