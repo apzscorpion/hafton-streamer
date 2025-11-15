@@ -15,11 +15,20 @@ RUN go mod verify && go mod download
 COPY . .
 
 # Verify files are copied correctly and module is recognized
-RUN ls -la && \
+RUN echo "=== Root directory ===" && \
+    ls -la && \
+    echo "=== cmd/ directory ===" && \
     ls -la cmd/ && \
+    echo "=== internal/ directory ===" && \
     ls -la internal/ && \
+    echo "=== internal/storage/ directory ===" && \
+    ls -la internal/storage/ && \
+    echo "=== go.mod content ===" && \
     cat go.mod && \
-    go list -m
+    echo "=== Module name ===" && \
+    go list -m && \
+    echo "=== Testing import resolution ===" && \
+    go list ./internal/storage
 
 # Ensure we're in module mode and build from module root
 ENV GO111MODULE=on
