@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -95,6 +96,11 @@ func (db *DB) InsertFile(record *FileRecord) error {
 		isProxied = 1
 	}
 
+	uploadedAtStr := record.UploadedAt.Format("2006-01-02 15:04:05")
+	expiresAtStr := record.ExpiresAt.Format("2006-01-02 15:04:05")
+	
+	log.Printf("Inserting file: ID=%s, uploaded_at=%s, expires_at=%s", record.ID, uploadedAtStr, expiresAtStr)
+	
 	_, err := db.conn.Exec(
 		query,
 		record.ID,
@@ -104,13 +110,17 @@ func (db *DB) InsertFile(record *FileRecord) error {
 		record.FileName,
 		record.FileSize,
 		record.FileType,
-		record.UploadedAt.Format("2006-01-02 15:04:05"),
-		record.ExpiresAt.Format("2006-01-02 15:04:05"),
+		uploadedAtStr,
+		expiresAtStr,
 		record.TelegramUserID,
 		isProxied,
 	)
 
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to insert file: %w", err)
+	}
+
+	return nil
 }
 
 func (db *DB) GetFileByID(id string) (*FileRecord, error) {
