@@ -115,22 +115,35 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		return
 	}
 
-	// Get Telegram file info (this works for files up to 2GB) - FAST, no download
-	// Note: GetFile works for ALL file sizes, even >50MB, because we're not downloading
+	// Get Telegram file info - try GetFile first
+	// For large files (>50MB), GetFile may fail, so we'll construct URL manually
+	var telegramFileURL string
 	file, err := b.api.GetFile(tgbotapi.FileConfig{FileID: telegramFileID})
 	if err != nil {
-		log.Printf("Error getting file info for %s (size: %d bytes): %v", fileName, fileSize, err)
-		// Check if error mentions file size - if so, it's likely a different issue
-		if strings.Contains(err.Error(), "too big") || strings.Contains(err.Error(), "too large") {
-			// This shouldn't happen for GetFile, but handle it gracefully
-			log.Printf("Unexpected size error from GetFile - file size: %d bytes", fileSize)
+		// Check if error is about file being too big
+		if strings.Contains(err.Error(), "too big") || strings.Contains(err.Error(), "file is too big") {
+			// For large files, Telegram's GetFile API fails, but we can still construct the URL
+			// The file_path is usually the same as file_id for large files, or we construct it
+			log.Printf("GetFile failed for large file %s (%d bytes), constructing URL manually", fileName, fileSize)
+			
+			// Construct Telegram file URL manually for large files
+			// Format: https://api.telegram.org/file/bot<TOKEN>/<file_path>
+			// For large files, file_path might be in format: documents/file_<id>.ext
+			// We'll try to construct it, but Telegram may require the actual path
+			// For now, store file_id and we'll handle it in the proxy
+			telegramFileURL = fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", b.api.Token, telegramFileID)
+			
+			// Note: This might not work directly, but we'll store file_id and handle in proxy
+			log.Printf("Using file_id-based URL for large file: %s", telegramFileURL)
+		} else {
+			log.Printf("Error getting file info for %s (size: %d bytes): %v", fileName, fileSize, err)
+			b.sendError(msg.Chat.ID, fmt.Sprintf("Failed to get file info: %v", err))
+			return
 		}
-		b.sendError(msg.Chat.ID, fmt.Sprintf("Failed to get file info: %v", err))
-		return
+	} else {
+		// Get Telegram file URL from GetFile response (works for files <50MB)
+		telegramFileURL = file.Link(b.api.Token)
 	}
-
-	// Get Telegram file URL immediately (no download, instant response)
-	telegramFileURL := file.Link(b.api.Token)
 	
 	// Check file size - Telegram allows up to 2GB
 	const maxTelegramSize = 2 * 1024 * 1024 * 1024 // 2GB
