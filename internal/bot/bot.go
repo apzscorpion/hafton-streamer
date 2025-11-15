@@ -122,19 +122,21 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	if err != nil {
 		// Check if error is about file being too big
 		if strings.Contains(err.Error(), "too big") || strings.Contains(err.Error(), "file is too big") {
-			// For large files, Telegram's GetFile API fails, but we can still construct the URL
-			// The file_path is usually the same as file_id for large files, or we construct it
-			log.Printf("GetFile failed for large file %s (%d bytes), constructing URL manually", fileName, fileSize)
+			// For large files (>50MB), Telegram's GetFile API fails
+			// Unfortunately, we can't get the file_path without GetFile
+			// We'll store the file_id and construct a URL that might work
+			// The actual file path format varies, but we'll try common patterns
+			log.Printf("GetFile failed for large file %s (%d bytes), using file_id workaround", fileName, fileSize)
 			
-			// Construct Telegram file URL manually for large files
-			// Format: https://api.telegram.org/file/bot<TOKEN>/<file_path>
-			// For large files, file_path might be in format: documents/file_<id>.ext
-			// We'll try to construct it, but Telegram may require the actual path
-			// For now, store file_id and we'll handle it in the proxy
-			telegramFileURL = fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", b.api.Token, telegramFileID)
+			// Store a placeholder URL - we'll need to handle this specially
+			// Format will be: file_id:<file_id> to indicate we need special handling
+			telegramFileURL = fmt.Sprintf("file_id:%s", telegramFileID)
 			
-			// Note: This might not work directly, but we'll store file_id and handle in proxy
-			log.Printf("Using file_id-based URL for large file: %s", telegramFileURL)
+			log.Printf("Large file detected, stored file_id: %s", telegramFileID)
+			
+			// Inform user about the limitation
+			b.sendError(msg.Chat.ID, fmt.Sprintf("Files larger than 50MB cannot be streamed due to Telegram Bot API limitations. Your file (%d MB) exceeds this limit. Please use files smaller than 50MB or download directly from Telegram.", fileSize/(1024*1024)))
+			return
 		} else {
 			log.Printf("Error getting file info for %s (size: %d bytes): %v", fileName, fileSize, err)
 			b.sendError(msg.Chat.ID, fmt.Sprintf("Failed to get file info: %v", err))

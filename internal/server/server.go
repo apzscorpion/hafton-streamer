@@ -209,21 +209,16 @@ func (s *Server) serveFileWithRange(w http.ResponseWriter, r *http.Request, reco
 }
 
 func (s *Server) proxyTelegramFile(w http.ResponseWriter, r *http.Request, record *database.FileRecord) {
-	// If TelegramFileURL is file_id-based (for large files), try to get actual file path
 	telegramFileURL := record.TelegramFileURL
 	
-	// Check if URL is file_id-based (large file workaround)
-	if strings.Contains(telegramFileURL, "/file/bot") && !strings.Contains(telegramFileURL, "/documents/") && !strings.Contains(telegramFileURL, "/photos/") && !strings.Contains(telegramFileURL, "/videos/") {
-		// This is a file_id-based URL, try to get actual file path
-		// For now, we'll redirect to Telegram's direct file access
-		// Format: https://api.telegram.org/file/bot<TOKEN>/<file_path>
-		// We need to use GetFile, but that fails for large files
-		// Alternative: Use Telegram's direct file access with file_id
-		log.Printf("Large file detected, using file_id: %s", record.TelegramFileID)
-		// For large files, we might need to use a different approach
-		// Try constructing URL with common paths
-		telegramFileURL = fmt.Sprintf("https://api.telegram.org/file/bot%s/documents/file_%s", 
-			strings.Split(telegramFileURL, "/bot")[1], record.TelegramFileID)
+	// Check if this is a large file workaround (file_id: prefix)
+	if strings.HasPrefix(telegramFileURL, "file_id:") {
+		// Large file - GetFile API failed, we only have file_id
+		// Unfortunately, we can't construct the file URL without the file_path from GetFile
+		// For now, return an error explaining the limitation
+		log.Printf("Large file proxy requested but file_path unavailable (file_id: %s)", record.TelegramFileID)
+		http.Error(w, "Large files (>50MB) cannot be streamed through this bot due to Telegram API limitations. Please download directly from Telegram.", http.StatusNotImplemented)
+		return
 	}
 	
 	// Create request to Telegram
