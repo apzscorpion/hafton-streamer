@@ -46,13 +46,21 @@ func New(cfg *config.Config, db *database.DB, storage *storage.Storage, domain s
 			Timeout: 30 * time.Second,
 		}
 		
-		// Use NewBotAPIWithClient - it takes endpoint, token, and client
-		// The endpoint should be base URL like: https://example.com (no /bot)
-		// The library will construct: {endpoint}/bot{token}/method
-		api, err = tgbotapi.NewBotAPIWithClient(cfg.Telegram.BotToken, apiEndpoint, client)
+		// Workaround: Create bot with default API first, then override the SelfURL
+		// This avoids the URL parsing bug in NewBotAPIWithClient/NewBotAPIWithAPIEndpoint
+		api, err = tgbotapi.NewBotAPI(cfg.Telegram.BotToken)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create bot API with custom server %s: %w", apiEndpoint, err)
+			return nil, fmt.Errorf("failed to create bot API: %w", err)
 		}
+		
+		// Manually set the custom endpoint
+		// The library expects: {endpoint}/bot{token}/method
+		// So we set SelfURL to: {endpoint}/bot{token}
+		customEndpoint := fmt.Sprintf("%s/bot%s", apiEndpoint, cfg.Telegram.BotToken)
+		api.SelfURL = customEndpoint
+		api.Client = client
+		
+		log.Printf("Set custom Bot API endpoint to: %s", customEndpoint)
 	} else {
 		// Use default Telegram Bot API
 		api, err = tgbotapi.NewBotAPI(cfg.Telegram.BotToken)
