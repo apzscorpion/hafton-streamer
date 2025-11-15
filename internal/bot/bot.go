@@ -32,20 +32,23 @@ func New(cfg *config.Config, db *database.DB, storage *storage.Storage, domain s
 	
 	// Use custom Bot API server if configured (for large file support)
 	if cfg.Telegram.BotAPIURL != "" {
+		// Clean up URL - remove trailing slashes, ensure proper format
+		apiEndpoint := strings.TrimSuffix(cfg.Telegram.BotAPIURL, "/")
 		// Ensure URL ends with /bot (required by Telegram Bot API)
-		apiEndpoint := cfg.Telegram.BotAPIURL
 		if !strings.HasSuffix(apiEndpoint, "/bot") {
-			if !strings.HasSuffix(apiEndpoint, "/") {
-				apiEndpoint += "/bot"
-			} else {
-				apiEndpoint += "bot"
-			}
+			apiEndpoint += "/bot"
 		}
 		log.Printf("Using custom Bot API server: %s", apiEndpoint)
-		client := &http.Client{}
+		
+		// Create HTTP client
+		client := &http.Client{
+			Timeout: 30 * time.Second,
+		}
+		
+		// Create BotAPI with custom endpoint
 		api, err = tgbotapi.NewBotAPIWithClient(cfg.Telegram.BotToken, apiEndpoint, client)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create bot API with custom server: %w", err)
+			return nil, fmt.Errorf("failed to create bot API with custom server %s: %w", apiEndpoint, err)
 		}
 	} else {
 		// Use default Telegram Bot API
