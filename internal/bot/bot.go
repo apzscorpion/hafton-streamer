@@ -84,21 +84,26 @@ func New(cfg *config.Config, db *database.DB, storage *storage.Storage, domain s
 		
 		log.Printf("Using custom Bot API server: %s", apiEndpoint)
 		
-		// Create HTTP client with timeout
-		client := &http.Client{
+		// Create a custom HTTP client that intercepts requests and fixes URLs
+		// This works around a bug in the library's URL construction
+		baseClient := &http.Client{
 			Timeout: 30 * time.Second,
 		}
 		
-		// Workaround: Create bot with default API first, then use SetAPIEndpoint
-		// This avoids the URL parsing bug in NewBotAPIWithClient/NewBotAPIWithAPIEndpoint
+		// Wrap the client to intercept and fix URLs
+		client := &urlFixerClient{
+			baseClient: baseClient,
+			baseURL:    apiEndpoint,
+			token:      cfg.Telegram.BotToken,
+		}
+		
+		// Create bot with default API, then override the client
 		api, err = tgbotapi.NewBotAPI(cfg.Telegram.BotToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create bot API: %w", err)
 		}
 		
-		// Set the custom endpoint using the SetAPIEndpoint method
-		// The endpoint should be base URL like: https://example.com (no /bot)
-		// The library will construct: {endpoint}/bot{token}/method
+		// Set custom endpoint and client
 		api.SetAPIEndpoint(apiEndpoint)
 		api.Client = client
 		
