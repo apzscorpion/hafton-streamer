@@ -33,28 +33,53 @@ func (c *urlFixerClient) Do(req *http.Request) (*http.Response, error) {
 	
 	originalURL := req.URL.String()
 	
-	// Check if URL is malformed (contains %!(EXTRA)
-	if strings.Contains(originalURL, "%!(EXTRA") {
-		// Extract method from the original URL path
-		// Format is usually: /bot{token}/{method} or just /{method}
-		path := req.URL.Path
-		method := ""
-		
-		// Try to extract method from path
-		parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
-		if len(parts) >= 2 {
-			// Format: bot{token}/{method}
-			method = parts[len(parts)-1]
-		} else if len(parts) == 1 && parts[0] != "" {
-			method = parts[0]
+	// Always reconstruct the URL from the request path to ensure it's correct
+	// The library constructs paths like: /bot{token}/{method}
+	path := req.URL.Path
+	
+	// Extract method from path
+	// Format is usually: /bot{token}/{method}
+	method := ""
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) >= 2 {
+		// Format: bot{token}/{method} - get the method (last part)
+		method = parts[len(parts)-1]
+	} else if len(parts) == 1 && parts[0] != "" && !strings.HasPrefix(parts[0], "bot") {
+		// Just the method
+		method = parts[0]
+	}
+	
+	// If we couldn't extract method, try to get it from the original URL
+	if method == "" {
+		// Try to extract from malformed URL string
+		if strings.Contains(originalURL, "%!(EXTRA") {
+			// Extract method name from error message
+			// Format: %!(EXTRA string=token, string=method)
+			parts := strings.Split(originalURL, "string=")
+			if len(parts) >= 2 {
+				method = strings.TrimSuffix(parts[len(parts)-1], ")")
+				method = strings.Trim(method, "\"")
+			}
 		}
-		
-		// Reconstruct proper URL
+	}
+	
+	// Reconstruct proper URL
+	if method != "" {
 		fixedURL := fmt.Sprintf("%s/bot%s/%s", c.baseURL, c.token, method)
 		parsedURL, err := url.Parse(fixedURL)
 		if err == nil {
 			req.URL = parsedURL
-			log.Printf("Fixed malformed URL: %s -> %s", originalURL, fixedURL)
+			log.Printf("Fixed URL: %s -> %s", originalURL, fixedURL)
+		} else {
+			log.Printf("Failed to parse fixed URL %s: %v", fixedURL, err)
+		}
+	} else {
+		// Fallback: try to use the base URL + path
+		fixedURL := c.baseURL + path
+		parsedURL, err := url.Parse(fixedURL)
+		if err == nil {
+			req.URL = parsedURL
+			log.Printf("Fixed URL (fallback): %s -> %s", originalURL, fixedURL)
 		}
 	}
 	
