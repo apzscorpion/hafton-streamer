@@ -31,6 +31,9 @@ func (c *urlFixerClient) Do(req *http.Request) (*http.Response, error) {
 	// The library constructs paths like: /bot{token}/{method}
 	// We need to rewrite to: {baseURL}/bot{token}/{method}
 	
+	// Log the original request for debugging
+	log.Printf("Intercepting request: %s %s", req.Method, req.URL.String())
+	
 	path := req.URL.Path
 	
 	// Extract method from path
