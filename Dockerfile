@@ -29,25 +29,24 @@ ENV CGO_CFLAGS="-D_LARGEFILE64_SOURCE"
 # Build combined bot+server
 RUN go build -o bin/combined ./cmd/combined
 
-# Final stage - include Bot API server
+# Final stage - use multi-stage to get Bot API server from official image
+FROM aiogram/telegram-bot-api:latest AS bot-api
+
+# Final stage - combine everything
 FROM debian:bullseye-slim
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     ca-certificates \
     sqlite3 \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install Telegram Bot API server
-RUN curl -L https://github.com/tdlib/telegram-bot-api/releases/latest/download/telegram-bot-api_Linux_x86_64.tar.gz -o /tmp/bot-api.tar.gz && \
-    tar -xzf /tmp/bot-api.tar.gz -C /usr/local/bin/ telegram-bot-api && \
-    chmod +x /usr/local/bin/telegram-bot-api && \
-    rm /tmp/bot-api.tar.gz
+# Copy Bot API server binary from official image
+COPY --from=bot-api /usr/local/bin/telegram-bot-api /usr/local/bin/telegram-bot-api
 
-# Copy binary
+# Copy our combined binary
 COPY --from=builder /app/bin/combined /app/bin/combined
 
 # Create directories
@@ -63,7 +62,6 @@ EXPOSE 8080 8081
 ENV PORT=8080
 
 # Start both Bot API server and combined bot+server
-CMD /usr/local/bin/telegram-bot-api --local --http-port=8081 --dir=/var/lib/telegram-bot-api & \
-    sleep 2 && \
-    ./bin/combined
+# Use shell form to run multiple commands
+CMD sh -c "/usr/local/bin/telegram-bot-api --local --http-port=8081 --dir=/var/lib/telegram-bot-api & sleep 3 && ./bin/combined"
 
