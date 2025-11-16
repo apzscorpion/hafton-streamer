@@ -6,6 +6,7 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -17,6 +18,48 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
+
+// urlFixerClient wraps an HTTP client to fix malformed URLs from the telegram-bot-api library
+type urlFixerClient struct {
+	baseClient *http.Client
+	baseURL    string
+	token      string
+}
+
+func (c *urlFixerClient) Do(req *http.Request) (*http.Response, error) {
+	// Fix malformed URLs by reconstructing them properly
+	// The library sometimes creates URLs like: https://example.com%!(EXTRA ...)
+	// We need to reconstruct: https://example.com/bot{token}/{method}
+	
+	originalURL := req.URL.String()
+	
+	// Check if URL is malformed (contains %!(EXTRA)
+	if strings.Contains(originalURL, "%!(EXTRA") {
+		// Extract method from the original URL path
+		// Format is usually: /bot{token}/{method} or just /{method}
+		path := req.URL.Path
+		method := ""
+		
+		// Try to extract method from path
+		parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+		if len(parts) >= 2 {
+			// Format: bot{token}/{method}
+			method = parts[len(parts)-1]
+		} else if len(parts) == 1 && parts[0] != "" {
+			method = parts[0]
+		}
+		
+		// Reconstruct proper URL
+		fixedURL := fmt.Sprintf("%s/bot%s/%s", c.baseURL, c.token, method)
+		parsedURL, err := url.Parse(fixedURL)
+		if err == nil {
+			req.URL = parsedURL
+			log.Printf("Fixed malformed URL: %s -> %s", originalURL, fixedURL)
+		}
+	}
+	
+	return c.baseClient.Do(req)
+}
 
 type Bot struct {
 	api      *tgbotapi.BotAPI
