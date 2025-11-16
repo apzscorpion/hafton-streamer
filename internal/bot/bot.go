@@ -27,14 +27,10 @@ type urlFixerClient struct {
 }
 
 func (c *urlFixerClient) Do(req *http.Request) (*http.Response, error) {
-	// Fix malformed URLs by reconstructing them properly
-	// The library sometimes creates URLs like: https://example.com%!(EXTRA ...)
-	// We need to reconstruct: https://example.com/bot{token}/{method}
-	
-	originalURL := req.URL.String()
-	
-	// Always reconstruct the URL from the request path to ensure it's correct
+	// ALWAYS rewrite the URL to use our custom Bot API server
 	// The library constructs paths like: /bot{token}/{method}
+	// We need to rewrite to: {baseURL}/bot{token}/{method}
+	
 	path := req.URL.Path
 	
 	// Extract method from path
@@ -49,37 +45,27 @@ func (c *urlFixerClient) Do(req *http.Request) (*http.Response, error) {
 		method = parts[0]
 	}
 	
-	// If we couldn't extract method, try to get it from the original URL
-	if method == "" {
-		// Try to extract from malformed URL string
-		if strings.Contains(originalURL, "%!(EXTRA") {
-			// Extract method name from error message
-			// Format: %!(EXTRA string=token, string=method)
-			parts := strings.Split(originalURL, "string=")
-			if len(parts) >= 2 {
-				method = strings.TrimSuffix(parts[len(parts)-1], ")")
-				method = strings.Trim(method, "\"")
-			}
-		}
-	}
-	
 	// Reconstruct proper URL
 	if method != "" {
 		fixedURL := fmt.Sprintf("%s/bot%s/%s", c.baseURL, c.token, method)
 		parsedURL, err := url.Parse(fixedURL)
 		if err == nil {
 			req.URL = parsedURL
-			log.Printf("Fixed URL: %s -> %s", originalURL, fixedURL)
+			log.Printf("Rewrote URL: %s -> %s", path, fixedURL)
 		} else {
 			log.Printf("Failed to parse fixed URL %s: %v", fixedURL, err)
+			return nil, fmt.Errorf("failed to construct URL: %w", err)
 		}
 	} else {
-		// Fallback: try to use the base URL + path
+		// Fallback: use base URL + original path
 		fixedURL := c.baseURL + path
 		parsedURL, err := url.Parse(fixedURL)
 		if err == nil {
 			req.URL = parsedURL
-			log.Printf("Fixed URL (fallback): %s -> %s", originalURL, fixedURL)
+			log.Printf("Rewrote URL (fallback): %s -> %s", path, fixedURL)
+		} else {
+			log.Printf("Failed to parse fallback URL %s: %v", fixedURL, err)
+			return nil, fmt.Errorf("failed to construct fallback URL: %w", err)
 		}
 	}
 	
@@ -122,29 +108,18 @@ func New(cfg *config.Config, db *database.DB, storage *storage.Storage, domain s
 			token:      cfg.Telegram.BotToken,
 		}
 		
-		// Try using NewBotAPIWithAPIEndpoint with the full URL including /bot
-		// Some versions of the library might need the full path
-		fullEndpoint := fmt.Sprintf("%s/bot%s", apiEndpoint, cfg.Telegram.BotToken)
-		api, err = tgbotapi.NewBotAPIWithAPIEndpoint(cfg.Telegram.BotToken, fullEndpoint)
+		// DON'T use SetAPIEndpoint or NewBotAPIWithAPIEndpoint - they have bugs
+		// Instead, create bot with default API and override the client
+		// The client will intercept and rewrite all URLs
+		api, err = tgbotapi.NewBotAPI(cfg.Telegram.BotToken)
 		if err != nil {
-			// If that fails, try without /bot
-			log.Printf("NewBotAPIWithAPIEndpoint with /bot failed, trying base URL: %v", err)
-			api, err = tgbotapi.NewBotAPIWithAPIEndpoint(cfg.Telegram.BotToken, apiEndpoint)
-			if err != nil {
-				// Last resort: create with default API and try to override
-				log.Printf("NewBotAPIWithAPIEndpoint failed, trying SetAPIEndpoint: %v", err)
-				api, err = tgbotapi.NewBotAPI(cfg.Telegram.BotToken)
-				if err != nil {
-					return nil, fmt.Errorf("failed to create bot API: %w", err)
-				}
-				api.SetAPIEndpoint(apiEndpoint)
-			}
+			return nil, fmt.Errorf("failed to create bot API: %w", err)
 		}
 		
-		// Set custom client with URL fixer
+		// Set custom client with URL fixer - this will rewrite all URLs
 		api.Client = client
 		
-		log.Printf("Set custom Bot API endpoint to: %s", apiEndpoint)
+		log.Printf("Using custom Bot API server: %s (URLs will be rewritten by client)", apiEndpoint)
 	} else {
 		// Use default Telegram Bot API
 		api, err = tgbotapi.NewBotAPI(cfg.Telegram.BotToken)
