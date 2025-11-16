@@ -49,7 +49,11 @@ func (c *urlFixerClient) Do(req *http.Request) (*http.Response, error) {
 	}
 	
 	// Reconstruct proper URL
+	// Bot API server expects: https://server.com:8081/bot{token}/{method}
+	// But Render routes to port 10000, so we need to check if port is needed
 	if method != "" {
+		// Try with port 8081 first (Bot API server's internal port)
+		// But Render might route to 10000, so we'll try without port first
 		fixedURL := fmt.Sprintf("%s/bot%s/%s", c.baseURL, c.token, method)
 		parsedURL, err := url.Parse(fixedURL)
 		if err == nil {
@@ -72,7 +76,47 @@ func (c *urlFixerClient) Do(req *http.Request) (*http.Response, error) {
 		}
 	}
 	
-	return c.baseClient.Do(req)
+	// Log the response to debug what we're getting back
+	// We'll add this after the request
+	
+	// Make the request
+	resp, err := c.baseClient.Do(req)
+	if err != nil {
+		return resp, err
+	}
+	
+	// Log response status for debugging
+	if resp.StatusCode != 200 {
+		log.Printf("Bot API server returned status %d for %s", resp.StatusCode, req.URL.String())
+		// Read first 200 chars of response body for debugging
+		if resp.Body != nil {
+			bodyBytes := make([]byte, 200)
+			n, _ := resp.Body.Read(bodyBytes)
+			if n > 0 {
+				log.Printf("Response body preview: %s", string(bodyBytes[:n]))
+			}
+			// Reset body for actual reading
+			resp.Body = &bodyReader{Reader: resp.Body, initialBytes: bodyBytes[:n]}
+		}
+	}
+	
+	return resp, err
+}
+
+// bodyReader wraps a response body to allow reading it multiple times
+type bodyReader struct {
+	io.Reader
+	initialBytes []byte
+	readInitial  bool
+}
+
+func (br *bodyReader) Read(p []byte) (n int, err error) {
+	if !br.readInitial && len(br.initialBytes) > 0 {
+		br.readInitial = true
+		copy(p, br.initialBytes)
+		return len(br.initialBytes), nil
+	}
+	return br.Reader.Read(p)
 }
 
 type Bot struct {
