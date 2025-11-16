@@ -130,30 +130,21 @@ func New(cfg *config.Config, db *database.DB, storage *storage.Storage, domain s
 			return nil, fmt.Errorf("Bot API URL must start with http:// or https://")
 		}
 		
-		// Render internal networking: Services in same project can communicate
-		// But free tier might have limitations. Try multiple formats:
+		// If Bot API URL is set, try localhost first (Bot API runs in same container)
+		// This bypasses all networking issues!
 		originalEndpoint := apiEndpoint
 		
-		if strings.Contains(apiEndpoint, ".onrender.com") {
-			// External URL detected - try to convert to internal
-			// Extract service name: https://hafton-streamer-2.onrender.com -> hafton-streamer-2
-			parts := strings.Split(apiEndpoint, "//")
-			if len(parts) > 1 {
-				hostParts := strings.Split(parts[1], ".")
-				if len(hostParts) > 0 {
-					serviceName := hostParts[0]
-					
-					// Try internal URL with port 10000 (Render's default internal port)
-					// Render routes external traffic to port 10000, internal might be same
-					internalURL := fmt.Sprintf("http://%s:10000", serviceName)
-					log.Printf("🔄 Attempting internal URL: %s (from %s)", internalURL, originalEndpoint)
-					log.Printf("💡 If this fails, Render free tier might not support internal networking")
-					log.Printf("💡 Fallback: Use default Telegram API (50MB limit) by removing TELEGRAM_BOT_API_URL")
-					apiEndpoint = internalURL
-				}
-			}
+		if strings.Contains(apiEndpoint, ".onrender.com") || strings.Contains(apiEndpoint, "hafton-streamer-2") {
+			// External URL or service name detected - use localhost instead
+			// Bot API server runs in same container on port 8081
+			localhostURL := "http://localhost:8081"
+			log.Printf("🔄 Converting %s to localhost: %s (Bot API in same container)", originalEndpoint, localhostURL)
+			apiEndpoint = localhostURL
+		} else if strings.Contains(apiEndpoint, "localhost") || strings.Contains(apiEndpoint, "127.0.0.1") {
+			// Already localhost - perfect!
+			log.Printf("✅ Using localhost URL: %s (Bot API in same container)", apiEndpoint)
 		} else if !strings.Contains(apiEndpoint, ".onrender.com") && strings.Contains(apiEndpoint, ":") {
-			// Already an internal URL format
+			// Internal URL format
 			log.Printf("ℹ️ Using provided internal URL: %s", apiEndpoint)
 		}
 		
