@@ -130,6 +130,25 @@ func New(cfg *config.Config, db *database.DB, storage *storage.Storage, domain s
 			return nil, fmt.Errorf("Bot API URL must start with http:// or https://")
 		}
 		
+		// If using Render external URL (onrender.com), try to use internal URL instead
+		// Internal URLs bypass Cloudflare and work better for POST requests
+		// Format: http://service-name:port (no .onrender.com)
+		if strings.Contains(apiEndpoint, ".onrender.com") {
+			// Extract service name from URL
+			// e.g., https://hafton-streamer-2.onrender.com -> hafton-streamer-2
+			parts := strings.Split(apiEndpoint, "//")
+			if len(parts) > 1 {
+				hostParts := strings.Split(parts[1], ".")
+				if len(hostParts) > 0 {
+					serviceName := hostParts[0]
+					// Use internal URL: http://service-name:8081
+					internalURL := fmt.Sprintf("http://%s:8081", serviceName)
+					log.Printf("Converting external URL %s to internal URL %s (bypasses Cloudflare)", apiEndpoint, internalURL)
+					apiEndpoint = internalURL
+				}
+			}
+		}
+		
 		log.Printf("Using custom Bot API server: %s", apiEndpoint)
 		
 		// Create a custom HTTP client that intercepts requests and fixes URLs
