@@ -85,19 +85,25 @@ func (c *urlFixerClient) Do(req *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 	
-	// Log response status for debugging
-	if resp.StatusCode != 200 {
-		log.Printf("Bot API server returned status %d for %s", resp.StatusCode, req.URL.String())
-		// Read first 200 chars of response body for debugging
-		if resp.Body != nil {
-			bodyBytes := make([]byte, 200)
-			n, _ := resp.Body.Read(bodyBytes)
-			if n > 0 {
-				log.Printf("Response body preview: %s", string(bodyBytes[:n]))
+	// Log ALL responses for debugging (not just errors)
+	log.Printf("Bot API server returned status %d for %s", resp.StatusCode, req.URL.String())
+	
+	// Always log response body preview to debug issues
+	if resp.Body != nil {
+		// Read first 500 chars to see what we're getting
+		bodyBytes := make([]byte, 500)
+		n, _ := resp.Body.Read(bodyBytes)
+		if n > 0 {
+			preview := string(bodyBytes[:n])
+			// Check if it's HTML (error page) or JSON
+			if strings.HasPrefix(strings.TrimSpace(preview), "<") {
+				log.Printf("⚠️ Got HTML response (error page): %s", preview)
+			} else {
+				log.Printf("✅ Got JSON response preview: %s", preview)
 			}
-			// Reset body for actual reading
-			resp.Body = &bodyReader{Reader: resp.Body, initialBytes: bodyBytes[:n]}
 		}
+		// Create a new reader that includes the bytes we already read
+		resp.Body = io.NopCloser(io.MultiReader(strings.NewReader(string(bodyBytes[:n])), resp.Body))
 	}
 	
 	return resp, err
