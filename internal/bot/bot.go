@@ -130,31 +130,21 @@ func New(cfg *config.Config, db *database.DB, storage *storage.Storage, domain s
 			return nil, fmt.Errorf("Bot API URL must start with http:// or https://")
 		}
 		
-		// If using Render external URL (onrender.com), convert to internal URL
-		// Internal URLs bypass Cloudflare and work better for POST requests
-		// Format: http://service-name:port (no .onrender.com)
+		// Note: Render's internal service discovery might not work as expected
+		// For now, keep using external URL but we'll handle Cloudflare issues differently
+		// If internal URL is provided directly (http://service-name:port), use it
+		// Otherwise, use external URL and hope Cloudflare allows POST requests
 		originalEndpoint := apiEndpoint
-		if strings.Contains(apiEndpoint, ".onrender.com") {
-			// Extract service name from URL
-			// e.g., https://hafton-streamer-2.onrender.com -> hafton-streamer-2
-			parts := strings.Split(apiEndpoint, "//")
-			if len(parts) > 1 {
-				hostParts := strings.Split(parts[1], ".")
-				if len(hostParts) > 0 {
-					serviceName := hostParts[0]
-					// Use internal URL: http://service-name:8081
-					internalURL := fmt.Sprintf("http://%s:8081", serviceName)
-					log.Printf("🔄 Converting external URL %s to internal URL %s (bypasses Cloudflare)", originalEndpoint, internalURL)
-					apiEndpoint = internalURL
-				}
-			}
-		}
 		
-		// Log final endpoint being used
-		if apiEndpoint != originalEndpoint {
-			log.Printf("✅ Using internal URL: %s", apiEndpoint)
-		} else {
-			log.Printf("ℹ️ Using provided URL as-is: %s", apiEndpoint)
+		// Check if it's already an internal URL (no .onrender.com and has port)
+		if !strings.Contains(apiEndpoint, ".onrender.com") && strings.Contains(apiEndpoint, ":") {
+			log.Printf("ℹ️ Using provided internal URL: %s", apiEndpoint)
+		} else if strings.Contains(apiEndpoint, ".onrender.com") {
+			// External URL - keep it for now since internal DNS might not work
+			// The issue is Cloudflare blocking POST, but we'll try anyway
+			log.Printf("⚠️ Using external URL: %s (Cloudflare may block POST requests)", apiEndpoint)
+			log.Printf("💡 Tip: If you get 403 errors, both services must be in the same Render project")
+			log.Printf("💡 Then use internal URL format: http://hafton-streamer-2:8081")
 		}
 		
 		log.Printf("Using custom Bot API server: %s", apiEndpoint)
