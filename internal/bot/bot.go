@@ -109,22 +109,6 @@ func (c *urlFixerClient) Do(req *http.Request) (*http.Response, error) {
 	return resp, err
 }
 
-// bodyReader wraps a response body to allow reading it multiple times
-type bodyReader struct {
-	io.Reader
-	initialBytes []byte
-	readInitial  bool
-}
-
-func (br *bodyReader) Read(p []byte) (n int, err error) {
-	if !br.readInitial && len(br.initialBytes) > 0 {
-		br.readInitial = true
-		copy(p, br.initialBytes)
-		return len(br.initialBytes), nil
-	}
-	return br.Reader.Read(p)
-}
-
 type Bot struct {
 	api      *tgbotapi.BotAPI
 	db       *database.DB
