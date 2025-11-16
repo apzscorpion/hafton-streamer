@@ -122,14 +122,26 @@ func New(cfg *config.Config, db *database.DB, storage *storage.Storage, domain s
 			token:      cfg.Telegram.BotToken,
 		}
 		
-		// Create bot with default API, then override the client
-		api, err = tgbotapi.NewBotAPI(cfg.Telegram.BotToken)
+		// Try using NewBotAPIWithAPIEndpoint with the full URL including /bot
+		// Some versions of the library might need the full path
+		fullEndpoint := fmt.Sprintf("%s/bot%s", apiEndpoint, cfg.Telegram.BotToken)
+		api, err = tgbotapi.NewBotAPIWithAPIEndpoint(cfg.Telegram.BotToken, fullEndpoint)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create bot API: %w", err)
+			// If that fails, try without /bot
+			log.Printf("NewBotAPIWithAPIEndpoint with /bot failed, trying base URL: %v", err)
+			api, err = tgbotapi.NewBotAPIWithAPIEndpoint(cfg.Telegram.BotToken, apiEndpoint)
+			if err != nil {
+				// Last resort: create with default API and try to override
+				log.Printf("NewBotAPIWithAPIEndpoint failed, trying SetAPIEndpoint: %v", err)
+				api, err = tgbotapi.NewBotAPI(cfg.Telegram.BotToken)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create bot API: %w", err)
+				}
+				api.SetAPIEndpoint(apiEndpoint)
+			}
 		}
 		
-		// Set custom endpoint and client
-		api.SetAPIEndpoint(apiEndpoint)
+		// Set custom client with URL fixer
 		api.Client = client
 		
 		log.Printf("Set custom Bot API endpoint to: %s", apiEndpoint)
